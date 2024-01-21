@@ -1,11 +1,13 @@
 package com.example.operationtimeoutsample
 
 import android.content.Context
-import android.content.SharedPreferences
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import com.google.android.material.button.MaterialButton
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Timer
@@ -13,15 +15,33 @@ import kotlin.concurrent.timerTask
 
 class MainActivity : AppCompatActivity(), TimeoutListener {
     // TAG for logging
-    private val tag = "MainActivity"
+    private val TAG = "MainActivity"
+
+    // Views
+    private lateinit var textView: TextView
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        textView = findViewById<TextView>(R.id.textView)
+        // リスナ設定
+        // スタートボタン
+        val startButton = findViewById<MaterialButton>(R.id.startButton)
+        startButton.setOnClickListener {
+            TimeoutManager.startTimer(this, this, 1)
+            textView.text = "Timer started."
+        }
+        // ストップボタン
+        val stopButton = findViewById<MaterialButton>(R.id.stopButton)
+        stopButton.setOnClickListener {
+            TimeoutManager.stopTimer()
+            textView.text = "Timer stopped."
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (event?.action == MotionEvent.ACTION_DOWN) {
-            Log.d(tag, "onTouchEvent: touched screen.")
+            Log.d(TAG, "onTouchEvent: touched screen.")
             TimeoutManager.userDidAction()
         }
         return super.onTouchEvent(event)
@@ -38,14 +58,27 @@ class MainActivity : AppCompatActivity(), TimeoutListener {
     }
 
     override fun onTimeout() {
-        TODO("Not yet implemented")
+        runOnUiThread {
+            textView.text = "Timer stopped."
+            AlertDialog.Builder(this)
+                .setTitle("Error")
+                .setMessage("No operation timeout occurred. Please retry.")
+                .setPositiveButton("OK") { _, _ -> }
+                .show()
+        }
     }
 }
 
+/**
+ * タイムアウトリスナーインターフェース
+ */
 interface TimeoutListener {
     fun onTimeout()
 }
 
+/**
+ * タイムアウト管理シングルトンオブジェクト
+ */
 object TimeoutManager {
     private lateinit var activity: AppCompatActivity
     private var timer: Timer? = null
@@ -53,6 +86,7 @@ object TimeoutManager {
     private var intervalMin: Int = 0
     private var lastActionTime: LocalDateTime? = null
     private var shouldCheckBackgroundTimeout = false
+    private const val TAG = "TimeoutManager"
 
     /**
      * 渡されたintervalMinを保存し、その時間でタイマーをスタートする。
@@ -67,39 +101,46 @@ object TimeoutManager {
         // save activity
         this.activity = activity
         // stop timer if exist
-        internalStopTimer()
+        timer?.let { internalStopTimer() }
         // set listener
         this.timeoutListener = timeoutListener
         // set interval
         this.intervalMin = intervalMin
+        Log.d(TAG, "startTimer: intervalMin is set to $intervalMin.")
         // start timer
-        startTimer(this.intervalMin)
+        startTimer(this.intervalMin * 60 * 1000L)
         // save action time for start
         updateActionTime()
         // start monitoring timeout
         shouldCheckBackgroundTimeout = true
+        Log.d(TAG, "startTimer: shouldCheckBackgroundTimeout is now $shouldCheckBackgroundTimeout.")
     }
 
     /**
-     * 常にintervalMinの時間でタイマーをスタートする。
+     * 常にintervalMillisの時間でタイマーをスタートする。
      * タイマーが切れたらタイムアウト処理を呼ぶ。
      * もしpublicメソッドを提供しなければならない場合、
      * intervalを受け取るが保存しないstartTemporaryTimerが必要。
      */
-    private fun startTimer(intervalMin: Int) {
-        // calc Long interval
-        val interval = intervalMin * 60 * 1000L
+    private fun startTimer(intervalMillis: Long) {
         // start timer
         timer = Timer()
-        timer!!.schedule(timerTask { timeout() }, interval)
+        timer!!.schedule(timerTask { timeout() }, intervalMillis)
+        Log.d(TAG, "startTimer: $intervalMillis milliseconds timer has started.")
     }
 
     /**
      * 稼働中のタイマーを止めて、バックグラウンドタイムアウトチェックを無効にする。
      */
     fun stopTimer() {
-        internalStopTimer()
-        shouldCheckBackgroundTimeout = false
+        timer?.let {
+            internalStopTimer()
+            shouldCheckBackgroundTimeout = false
+            Log.d(
+                TAG,
+                "stopTimer: shouldCheckBackgroundTimeout is now $shouldCheckBackgroundTimeout."
+            )
+        }
     }
 
     /**
@@ -108,15 +149,19 @@ object TimeoutManager {
     private fun internalStopTimer() {
         timer?.cancel()
         timer = null
+        Log.d(TAG, "internalStopTimer: Timer has stopped.")
     }
 
     /**
-     * 操作時刻を更新し、intervalMinの時間でタイマーをリスタートする。
+     * 操作時刻を更新し、intervalMillisの時間でタイマーをリスタートする。
      */
     fun userDidAction() {
-        updateActionTime()
-        internalStopTimer()
-        startTimer(intervalMin)
+        if (shouldCheckBackgroundTimeout) {
+            Log.d(TAG, "userDidAction: Timer will restart.")
+            updateActionTime()
+            internalStopTimer()
+            startTimer(intervalMin * 60 * 1000L)
+        }
     }
 
     /**
@@ -124,6 +169,7 @@ object TimeoutManager {
      */
     private fun updateActionTime() {
         lastActionTime = LocalDateTime.now()
+        Log.d(TAG, "updateActionTime: lastActionTime is now $lastActionTime.")
     }
 
     /**
@@ -133,6 +179,7 @@ object TimeoutManager {
      * - 無効な場合、何もしない
      */
     fun appDidEnterBackground() {
+        Log.d(TAG, "appDidEnterBackground: ")
         internalStopTimer()
         if (shouldCheckBackgroundTimeout) {
             saveLastActionTime()
@@ -146,16 +193,19 @@ object TimeoutManager {
      * - 無効な場合、何もしない
      */
     fun appWillEnterForeground() {
+        Log.d(TAG, "appWillEnterForeground: ")
         if (shouldCheckBackgroundTimeout) {
             val lastActionTime = loadLastActionTime()
-            val durationMin = Duration.between(lastActionTime, LocalDateTime.now()).toMinutes()
+            Log.d(TAG, "appWillEnterForeground: now is ${LocalDateTime.now()}")
+            val durationMillis = Duration.between(lastActionTime, LocalDateTime.now()).toMillis()
+            Log.d(TAG, "appWillEnterForeground: durationMillis is $durationMillis")
 
-            if (durationMin >= intervalMin) {
+            if (durationMillis >= intervalMin * 60 * 1000L) {
                 // 時間がintervalを超えている場合はタイムアウト
                 timeout()
             } else {
                 // 超えていない場合は残り時間でタイマーをスタート
-                startTimer((intervalMin - durationMin).toInt())
+                startTimer(intervalMin * 60 * 1000L - durationMillis)
             }
         }
     }
@@ -165,6 +215,7 @@ object TimeoutManager {
      * タイムアウトリスナーにタイムアウトを通知する。
      */
     private fun timeout() {
+        Log.d(TAG, "timeout: occurred.")
         timeoutListener.onTimeout()
     }
 
@@ -172,6 +223,7 @@ object TimeoutManager {
      * 最終操作時刻をSharedPreferencesに書き込む
      */
     private fun saveLastActionTime() {
+        Log.d(TAG, "saveLastActionTime: $lastActionTime")
         val preferences = activity.getSharedPreferences("KEY_PREF", Context.MODE_PRIVATE)
         with(preferences.edit()) {
             putString("KEY_LAST_ACTION_TIME", lastActionTime.toString())
@@ -184,7 +236,9 @@ object TimeoutManager {
      */
     private fun loadLastActionTime(): LocalDateTime {
         val preferences = activity.getSharedPreferences("KEY_PREF", Context.MODE_PRIVATE)
-        val lastActionTime = preferences.getString("KEY_LAST_ACTION_TIME", LocalDateTime.now().toString())
+        val lastActionTime =
+            preferences.getString("KEY_LAST_ACTION_TIME", LocalDateTime.now().toString())
+        Log.d(TAG, "loadLastActionTime: $lastActionTime")
         return LocalDateTime.parse(lastActionTime)
     }
 }
