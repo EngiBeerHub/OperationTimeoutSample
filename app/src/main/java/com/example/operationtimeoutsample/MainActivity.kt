@@ -11,7 +11,7 @@ import com.google.android.material.button.MaterialButton
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Timer
-import kotlin.concurrent.timerTask
+import kotlin.concurrent.*
 
 class MainActivity : AppCompatActivity(), TimeoutListener {
     // TAG for logging
@@ -57,6 +57,9 @@ class MainActivity : AppCompatActivity(), TimeoutListener {
         TimeoutManager.appWillEnterForeground()
     }
 
+    /**
+     * タイムアウト時処理
+     */
     override fun onTimeout() {
         runOnUiThread {
             textView.text = "Timer stopped."
@@ -67,6 +70,13 @@ class MainActivity : AppCompatActivity(), TimeoutListener {
                 .show()
         }
     }
+
+    /**
+     * 1秒ごとのカウント
+     */
+    override fun tick(second: Int) {
+        runOnUiThread { textView.text = "foreground count: ${second.toString()}" }
+    }
 }
 
 /**
@@ -74,6 +84,8 @@ class MainActivity : AppCompatActivity(), TimeoutListener {
  */
 interface TimeoutListener {
     fun onTimeout()
+
+    fun tick(second: Int)
 }
 
 /**
@@ -82,6 +94,7 @@ interface TimeoutListener {
 object TimeoutManager {
     private lateinit var activity: AppCompatActivity
     private var timer: Timer? = null
+    private var timerForActivity: Timer? = null
     private lateinit var timeoutListener: TimeoutListener
     private var intervalMin: Int = 0
     private var lastActionTime: LocalDateTime? = null
@@ -126,6 +139,11 @@ object TimeoutManager {
         // start timer
         timer = Timer()
         timer!!.schedule(timerTask { timeout() }, intervalMillis)
+        timerForActivity = Timer()
+        var second = 0
+        timerForActivity = timer(period = 1000) {
+            timeoutListener.tick(second++)
+        }
         Log.d(TAG, "startTimer: $intervalMillis milliseconds timer has started.")
     }
 
@@ -149,6 +167,8 @@ object TimeoutManager {
     private fun internalStopTimer() {
         timer?.cancel()
         timer = null
+        timerForActivity?.cancel()
+        timerForActivity = null
         Log.d(TAG, "internalStopTimer: Timer has stopped.")
     }
 
@@ -215,6 +235,8 @@ object TimeoutManager {
      * タイムアウトリスナーにタイムアウトを通知する。
      */
     private fun timeout() {
+        timerForActivity?.cancel()
+        timerForActivity = null
         Log.d(TAG, "timeout: occurred.")
         timeoutListener.onTimeout()
     }
