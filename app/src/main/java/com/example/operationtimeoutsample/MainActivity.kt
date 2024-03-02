@@ -98,7 +98,7 @@ object TimeoutManager {
     private lateinit var timeoutListener: TimeoutListener
     private var intervalMin: Int = 0
     private var lastActionTime: LocalDateTime? = null
-    private var shouldCheckBackgroundTimeout = false
+    private var isTimerActive = false
     private const val TAG = "TimeoutManager"
 
     /**
@@ -125,8 +125,8 @@ object TimeoutManager {
         // save action time for start
         updateActionTime()
         // start monitoring timeout
-        shouldCheckBackgroundTimeout = true
-        Log.d(TAG, "startTimer: shouldCheckBackgroundTimeout is now $shouldCheckBackgroundTimeout.")
+        isTimerActive = true
+        Log.d(TAG, "startTimer: shouldCheckBackgroundTimeout is now $isTimerActive.")
     }
 
     /**
@@ -153,10 +153,10 @@ object TimeoutManager {
     fun stopTimer() {
         timer?.let {
             internalStopTimer()
-            shouldCheckBackgroundTimeout = false
+            isTimerActive = false
             Log.d(
                 TAG,
-                "stopTimer: shouldCheckBackgroundTimeout is now $shouldCheckBackgroundTimeout."
+                "stopTimer: shouldCheckBackgroundTimeout is now $isTimerActive."
             )
         }
     }
@@ -176,7 +176,7 @@ object TimeoutManager {
      * 操作時刻を更新し、intervalMillisの時間でタイマーをリスタートする。
      */
     fun userDidAction() {
-        if (shouldCheckBackgroundTimeout) {
+        if (isTimerActive) {
             Log.d(TAG, "userDidAction: Timer will restart.")
             updateActionTime()
             internalStopTimer()
@@ -201,7 +201,7 @@ object TimeoutManager {
     fun appDidEnterBackground() {
         Log.d(TAG, "appDidEnterBackground: ")
         internalStopTimer()
-        if (shouldCheckBackgroundTimeout) {
+        if (isTimerActive) {
             saveLastActionTime()
         }
     }
@@ -214,7 +214,7 @@ object TimeoutManager {
      */
     fun appWillEnterForeground() {
         Log.d(TAG, "appWillEnterForeground: ")
-        if (shouldCheckBackgroundTimeout) {
+        if (isTimerActive) {
             val lastActionTime = loadLastActionTime()
             Log.d(TAG, "appWillEnterForeground: now is ${LocalDateTime.now()}")
             val durationMillis = Duration.between(lastActionTime, LocalDateTime.now()).toMillis()
@@ -238,6 +238,7 @@ object TimeoutManager {
         timerForActivity?.cancel()
         timerForActivity = null
         Log.d(TAG, "timeout: occurred.")
+        isTimerActive = false
         timeoutListener.onTimeout()
     }
 
