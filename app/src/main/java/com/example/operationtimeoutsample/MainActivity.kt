@@ -1,5 +1,6 @@
 package com.example.operationtimeoutsample
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
@@ -14,6 +15,8 @@ class MainActivity : AppCompatActivity(), TimeoutListener {
 
     // Views
     private lateinit var textView: TextView
+
+    @SuppressLint("SetTextI18n")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -45,6 +48,7 @@ class MainActivity : AppCompatActivity(), TimeoutListener {
     /**
      * タイムアウト時処理
      */
+    @SuppressLint("SetTextI18n")
     override fun onTimeout() {
         runOnUiThread {
             textView.text = "Timer stopped."
@@ -59,6 +63,7 @@ class MainActivity : AppCompatActivity(), TimeoutListener {
     /**
      * 1秒ごとのカウント
      */
+    @SuppressLint("SetTextI18n")
     override fun tick(second: Int) {
         runOnUiThread { textView.text = "foreground count: ${second.toString()}" }
     }
